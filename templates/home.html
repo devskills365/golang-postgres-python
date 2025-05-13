@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base de données des statistiques régionales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .suggestions-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+        }
+        .logo-img { width: clamp(150px, 5vw, 250px); height: auto; }
+        .scroll-indicator { animation: bounce 1.5s infinite; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+        #map svg path:hover { fill: #d9e6db; cursor: pointer; }
+        .active-indicator { background-color: #e0e0e0; font-weight: bold; }
+        .chart-container { position: relative; width: 100%; height: 0; padding-bottom: 75%; }
+        .chart-container canvas { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
+        body { overflow-x: hidden; }
+        .container { max-width: 100%; box-sizing: border-box; }
+    </style>
+</head>
+<body class="font-montserrat bg-gray-100">
+    <!-- Section 1 : Menu (Fixé en haut) -->
+    <header class="bg-white shadow-lg p-4 fixed top-0 left-0 w-full z-50">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center justify-between w-full md:w-auto">
+                <a href="/" class="flex-shrink-0">
+                    <img src="/static/img/logo.jpeg" alt="Logo" class="logo-img">
+                </a>
+                <button class="md:hidden text-[#49655A] text-2xl focus:outline-none" onclick="toggleMenu()">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav class="nav-links flex-col md:flex-row md:flex items-center space-y-3 md:space-y-0 md:space-x-4 w-full md:w-auto mt-4 md:mt-0 hidden">
+                <a href="/search_indicators" class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Accéder aux indicateurs
+                </a>
+                <a href="#" class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Aide
+                </a>
+            </nav>
+            <div class="flex items-center space-x-4 mt-4 md:mt-0 w-full md:w-auto">
+                <form method="POST" action="/search" class="flex items-center w-full max-w-lg" onsubmit="return submitSearch();">
+                    <div class="relative w-full">
+                        <input type="text" id="search-input" name="query" placeholder="Entrez votre recherche..."
+                               class="w-full px-4 py-2 bg-gray-50 border border-[#49655A] rounded-full focus:outline-none focus:ring-2 focus:ring-[#49655A] shadow-sm text-sm"
+                               required autocomplete="off">
+                        <div id="suggestions" class="suggestions-list bg-white border border-[#49655A] shadow-lg"></div>
+                    </div>
+                    <button type="submit" id="search-button"
+                            class="bg-[#49655A] text-white px-4 py-2 rounded-full hover:bg-[#003820] transition-all font-semibold text-sm ml-2">
+                        Rechercher
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- Section 2 : Contenu Principal -->
+    <div class="container mx-auto px-4 py-8 flex flex-col lg:flex-row gap-6 mt-24">
+        <div class="left-column flex flex-col lg:flex-row gap-6 w-full">
+            <div class="left-section flex-1 bg-white p-6 rounded-xl shadow-lg">
+                <div id="indicators-list" class="mb-4">
+                    <h4 class="text-[#49655A] text-lg font-semibold mb-2">Indicateurs clés</h4>
+                    <ul id="indicators" class="space-y-2 max-h-40 overflow-y-auto border border-[#49655A] rounded-lg p-2 bg-gray-50">
+                        <li class="text-[#49655A] text-sm font-medium cursor-pointer hover:bg-[#d9e6db] p-1 rounded active-indicator">Population</li>
+                        <li class="text-[#49655A] text-sm font-medium cursor-pointer hover:bg-[#d9e6db] p-1 rounded">Rapport de Masculinité (RM) en %</li>
+                        <li class="text-[#49655A] text-sm font-medium cursor-pointer hover:bg-[#d9e6db] p-1 rounded">Taux de divortialité (%)</li>
+                        <li class="text-[#49655A] text-sm font-medium cursor-pointer hover:bg-[#d9e6db] p-1 rounded">Nombre de Classes au primaire</li>
+                    </ul>
+                </div>
+                <div id="map" class="w-full h-80 md:h-[500px] bg-white rounded-lg relative overflow-auto md:overflow-hidden"></div>
+                <div id="tooltip" class="absolute z-50 bg-white border border-[#49655A] p-2 rounded shadow-md pointer-events-none text-[#49655A] text-sm hidden"></div>
+            </div>
+            <div class="right-section flex-1 bg-white p-6 rounded-xl shadow-lg min-h-[300px] w-full lg:w-1/3">
+                <h4 class="text-[#49655A] text-lg font-semibold mb-4 italic">Horloge démographique</h4>
+                <div class="bg-gray-50 border border-[#49655A] p-4 rounded-lg mb-4 shadow-sm">
+                    <div class="text-[#49655A] font-semibold text-sm flex items-center gap-2">
+                        <i class="fas fa-clock text-[#F39323]"></i> Population actuelle*
+                    </div>
+                    <div id="birthsBox" class="text-xl font-bold text-[#0f0f0f] mt-2">{{ .pop_minute_val | pop_minute }}</div>
+                    <div id="dateBox" class="text-xs text-[#49655A] mt-1 italic font-bold"></div>
+                </div>
+                <div class="bg-gray-50 border border-[#49655A] p-4 rounded-lg shadow-sm">
+                    <div class="text-[#49655A] font-semibold text-sm flex items-center gap-2">
+                        <i class="fa fa-baby text-[#F39323]"></i> Naissance*
+                    </div>
+                    <div id="naissance" class="text-xl font-bold text-[#0f0f0f] mt-2">{{ .naissance }}</div>
+                    <p id="birthDateRange" class="text-xs text-gray-600 mt-1 italic"></p>
+                    <div class="text-[#49655A] font-semibold text-sm flex items-center gap-2 mt-2">
+                        <i class="fas fa-skull text-[#F39323]"></i> Décès*
+                    </div>
+                    <div id="deces" class="text-xl font-bold text-[#0f0f0f] mt-2">{{ .deces }}</div>
+                    <p id="deathDateRange" class="text-xs text-gray-600 mt-1 italic"></p>
+                </div>
+                <h5 class="text-xs italic text-[#49655A] mt-4">*Projection RGPH 2021</h5>
+            </div>
+        </div>
+        <div class="right-column w-full lg:w-1/3 bg-white p-6 rounded-xl shadow-lg relative">
+            <h2 class="text-white text-base font-semibold bg-[#F39323] p-3 rounded-lg sticky top-0 z-10 shadow-md mb-4 flex items-center gap-2">
+                <i class="fas fa-tachometer-alt text-sm"></i> Infos régions
+            </h2>
+            <ul class="region-list space-y-3 max-h-[400px] overflow-y-auto">
+                {{ range .regions }}
+                <li class="bg-white p-3 rounded-lg shadow-sm hover:bg-[#f8f8f8] hover:scale-102 transition-all flex items-center gap-2"
+                    onmouseover="highlightRegion('{{ . }}')" onmouseout="resetRegionHighlight(event)">
+                    <i class="fas fa-map-marker-alt text-[#F39323] text-base"></i>
+                    <a href="/region_vitrine/{{ . }}" class="text-[#49655A] font-bold text-sm">{{ . }}</a>
+                </li>
+                {{ end }}
+            </ul>
+            <div class="scroll-indicator absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[#49655A] text-sm">▼</div>
+        </div>
+    </div>
+
+    <!-- Section 3 : Graphiques -->
+    <div class="charts-row-container mx-auto px-4 py-8 flex flex-col md:flex-row gap-6">
+        <div class="chart-card flex-1 bg-white p-6 rounded-xl shadow-lg">
+            <h5 class="text-[#49655A] text-lg font-semibold mb-4">Évolution de la population de 2019-2023</h5>
+            <div class="chart-container"><canvas id="chart-line-population"></canvas></div>
+        </div>
+        <div class="chart-card flex-1 bg-white p-6 rounded-xl shadow-lg">
+            <h5 class="text-[#49655A] text-lg font-semibold mb-4">Taux de scolarisation de 2019-2023</h5>
+            <div class="chart-container"><canvas id="chart-line-enrollment"></canvas></div>
+        </div>
+        <div class="chart-card flex-1 bg-white p-6 rounded-xl shadow-lg">
+            <h5 class="text-[#49655A] text-lg font-semibold mb-4">Répartition de la population par tranche d'âge en 2023</h5>
+            <div class="chart-container"><canvas id="chart-bar-age-distribution"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-[#49655A] text-white py-6 mt-8">
+        <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+            <div class="mb-4 md:mb-0">
+                <p class="text-sm font-semibold">© 2025 Base de données statistiques régionales</p>
+                <p class="text-xs">Développé par <a href="https://www.anstat.ci/" target="_blank" class="text-[#F39323] hover:underline">ANSTAT</a></p>
+            </div>
+            <div class="flex space-x-6">
+                <a href="/" class="text-sm hover:text-[#F39323] transition-colors">Liste des régions</a>
+                <a href="/search_indicators" class="text-sm hover:text-[#F39323] transition-colors">Indicateurs</a>
+                <a href="#" class="text-sm hover:text-[#F39323] transition-colors">Contact</a>
+            </div>
+            <div class="mt-4 md:mt-0 flex space-x-4">
+                <a href="#" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-twitter"></i></a>
+                <a href="https://www.linkedin.com/company/anstat/" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-linkedin"></i></a>
+                <a href="https://www.facebook.com/anstatci" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-facebook"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts JavaScript -->
+    <script>
+        // Variable globale pour l'état des suggestions
+        let isSuggestionsActive = false;
+
+        // Variables globales pour la carte
+        let svg, path, colorScale, selectedIndicator = "Population", selectedRegion = null;
+
+        // Menu responsive
+        function toggleMenu() {
+            const nav = document.querySelector('.nav-links');
+            nav.classList.toggle('hidden');
+            nav.classList.toggle('flex');
+        }
+
+        function setActive(element) {
+            document.querySelectorAll('nav a').forEach(link => link.classList.remove('bg-[#49655A]', 'text-white'));
+            element.classList.add('bg-[#49655A]', 'text-white');
+        }
+
+        function submitSearch() {
+            const query = document.getElementById('search-input').value;
+            console.log('Recherche soumise : ' + query);
+            return true;
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            // Section 1 : Autocomplétion Recherche
+            const searchInput = document.getElementById("search-input");
+            const suggestionsContainer = document.getElementById("suggestions");
+            const regionList = document.querySelector(".region-list");
+
+            searchInput.addEventListener("input", function () {
+                const query = searchInput.value.trim();
+                if (query.length < 2) {
+                    suggestionsContainer.innerHTML = "";
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                    return;
+                }
+                fetch(`/autocomplete?query=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestionsContainer.innerHTML = "";
+                        if (data.length > 0) {
+                            data.forEach(item => {
+                                const div = document.createElement("div");
+                                div.textContent = item;
+                                div.classList.add('px-4', 'py-2', 'cursor-pointer', 'hover:bg-[#d9e6db]', 'hover:text-[#49655A]', 'text-sm');
+                                div.onclick = function () {
+                                    searchInput.value = item;
+                                    suggestionsContainer.innerHTML = "";
+                                    suggestionsContainer.style.display = 'none';
+                                    isSuggestionsActive = false;
+                                    window.location.href = `/search_indicators2/${encodeURIComponent(item)}`;
+                                };
+                                suggestionsContainer.appendChild(div);
+                            });
+                            suggestionsContainer.style.display = 'block';
+                            isSuggestionsActive = true;
+                        } else {
+                            suggestionsContainer.style.display = 'none';
+                            isSuggestionsActive = false;
+                        }
+                    })
+                    .catch(error => console.error('Erreur autocomplétion :', error));
+            });
+
+            suggestionsContainer.addEventListener("mouseover", () => isSuggestionsActive = true);
+            suggestionsContainer.addEventListener("mouseout", (event) => {
+                if (!searchInput.contains(event.relatedTarget)) isSuggestionsActive = false;
+            });
+
+            document.addEventListener("click", function (event) {
+                if (!searchInput.contains(event.target) && !suggestionsContainer.contains(event.target) && !regionList.contains(event.target)) {
+                    suggestionsContainer.innerHTML = "";
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                }
+            });
+
+            // Section 2 : Horloge démographique
+            function updatePopulationBox() {
+                fetch('/births_data')
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('birthsBox').textContent = data.total_births.toLocaleString('fr-FR');
+                        const date = new Date(data.time * 1000);
+                        const formattedDate = `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                        document.getElementById('dateBox').textContent = formattedDate;
+                    })
+                    .catch(error => {
+                        console.error('Erreur population :', error);
+                        document.getElementById('birthsBox').textContent = '29 389 150';
+                        document.getElementById('dateBox').textContent = '10-04-2025';
+                    });
+            }
+            setInterval(updatePopulationBox, 1000);
+            updatePopulationBox();
+
+            const today = new Date();
+            const formattedToday = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+            document.getElementById('birthDateRange').textContent = `Du 01-01-2025 au ${formattedToday}`;
+            document.getElementById('deathDateRange').textContent = `Du 01-01-2025 au ${formattedToday}`;
+
+            // Section 2 : Carte et Indicateurs
+            const indicatorTitles = {
+                "Population": "Cartographie de la population en 2021",
+                "Rapport de Masculinité (RM) en %": "Cartographie du rapport de masculinité en 2021",
+                "Taux de divortialité (%)": "Répartition du taux de divortialité en 2021",
+                "Nombre de Classes au primaire": "Répartition spatiale des classes du primaire en 2021"
+            };
+
+            const width = 760, height = 500;
+            const projection = d3.geoMercator().center([-5.547080, 7.539989]).scale(4000).translate([width / 2, height / 2]);
+            path = d3.geoPath().projection(projection);
+            svg = d3.select("#map").append("svg").attr("width", width).attr("height", height);
+            const legendGroup = svg.append("g").attr("class", "legend-group").attr("transform", `translate(${width - 170}, ${height - 150})`);
+
+            svg.append("rect").attr("x", 0).attr("y", 0).attr("width", width).attr("height", height).attr("fill", "#e0e0e0").attr("opacity", 0.2);
+
+            function updateMap(data, indicator) {
+                const values = data.features.map(d => d.properties[indicator]).filter(v => v !== undefined && v !== null);
+                const minValue = d3.min(values) || 0;
+                const maxValue = d3.max(values) || 100;
+                colorScale = d3.scaleLinear().domain([minValue, maxValue]).range(["hsla(91, 35%, 22%, 0.1)", "#49655A"]);
+                svg.selectAll(".region").attr("fill", d => {
+                    const value = d.properties[indicator];
+                    return value !== undefined && value !== null ? colorScale(value) : "#ccc";
+                });
+                updateLegend(minValue, maxValue, indicator);
+            }
+
+            function updateLegend(minValue, maxValue, indicator) {
+                const legendWidth = 150;
+                const legendScale = d3.scaleLinear().domain([minValue, maxValue]).range([0, legendWidth]);
+                const legendAxis = d3.axisBottom(legendScale).ticks(5).tickFormat(d3.format(".2s"));
+                legendGroup.select(".legend").remove();
+                svg.select(".title").remove();
+                const titleText = indicatorTitles[indicator] || `Cartographie ${indicator} en 2021`;
+                svg.append("text")
+                    .attr("class", "title")
+                    .attr("x", width / 1.75)
+                    .attr("y", 15)
+                    .attr("text-anchor", "middle")
+                    .style("font-size", "18px")
+                    .style("font-weight", "bold")
+                    .style("fill", "black")
+                    .text(titleText);
+
+                const legend = legendGroup.append("g").attr("class", "legend").attr("transform", "translate(0, 40)");
+                let gradient = svg.select("defs").select("#gradient");
+                if (gradient.empty()) {
+                    gradient = svg.append("defs").append("linearGradient").attr("id", "gradient").attr("x1", "0%").attr("y1", "0%").attr("x2", "100%").attr("y2", "0%");
+                }
+                gradient.selectAll("stop").remove();
+                gradient.append("stop").attr("offset", "0%").attr("stop-color", "hsla(91, 35%, 22%, 0.1)");
+                gradient.append("stop").attr("offset", "100%").attr("stop-color", "#49655A");
+
+                legend.append("rect").attr("width", legendWidth).attr("height", 10).style("fill", "url(#gradient)").style("stroke", "#999").style("stroke-width", "0.5");
+                legend.append("g").attr("transform", "translate(0, 10)").call(legendAxis).selectAll("text").style("font-size", "10px");
+
+                if (indicator === 'Population') {
+                    legend.append("text").attr("x", 0).attr("y", 45).style("font-size", "12px").style("font-weight", "bold").style("fill", "black").text("Hommes: 15 344 990");
+                    legend.append("text").attr("x", 0).attr("y", 60).style("font-size", "12px").style("font-weight", "bold").style("fill", "black").text("Femmes: 14 044 160");
+                    legend.append("text").attr("x", 0).attr("y", 75).style("font-size", "12px").style("font-weight", "bold").style("fill", "black").text("Total: 29 389 150");
+                }
+            }
+
+            d3.json("/static/carte/populations_ok.json").then(function(geojsonData) {
+                svg.selectAll(".region")
+                    .data(geojsonData.features)
+                    .enter().append("path")
+                    .attr("class", "region")
+                    .attr("d", path)
+                    .style("cursor", "pointer")
+                    .on("mouseover", function(event, d) {
+                        const tooltip = d3.select("#tooltip");
+                        const mapContainer = document.getElementById("map");
+                        const mapRect = mapContainer.getBoundingClientRect();
+                        const scrollLeft = mapContainer.scrollLeft;
+                        const scrollTop = mapContainer.scrollTop;
+                        const value = d.properties[selectedIndicator];
+                        tooltip.classed("hidden", false)
+                               .html(`<strong>${d.properties.REGION}</strong><br>${selectedIndicator}: ${value !== undefined ? value.toLocaleString('fr-FR') : 'N/A'}`);
+
+                        const tooltipWidth = tooltip.node().offsetWidth;
+                        const tooltipHeight = tooltip.node().offsetHeight;
+                        let leftPos = event.clientX - mapRect.left + scrollLeft - 100;
+                        let topPos = event.clientY - mapRect.top + scrollTop - tooltipHeight + 300;
+
+                        if (leftPos + tooltipWidth > mapRect.width + scrollLeft) {
+                            leftPos = event.clientX - mapRect.left + scrollLeft - tooltipWidth - 20;
+                        }
+                        if (topPos < scrollTop) {
+                            topPos = event.clientY - mapRect.top + scrollTop + 5;
+                        }
+
+                        tooltip.style("left", leftPos + "px")
+                               .style("top", topPos + "px");
+                    })
+                    .on("mouseout", function(event, d) {
+                        d3.select("#tooltip").classed("hidden", true);
+                        resetRegionHighlight(event);
+                    })
+                    .on("click", (event, d) => window.location.href = `/region_vitrine/${d.properties.REGION}`);
+
+                const indicators = ["Population", "Rapport de Masculinité (RM) en %", "Taux de divortialité (%)", "Nombre de Classes au primaire"];
+                const indicatorList = d3.select("#indicators")
+                    .selectAll("li")
+                    .data(indicators)
+                    .enter().append("li")
+                    .text(d => d)
+                    .classed('text-[#49655A] text-sm font-medium cursor-pointer hover:bg-[#d9e6db] p-1 rounded', true)
+                    .on("click", function(event, indicator) {
+                        selectedIndicator = indicator;
+                        indicatorList.classed("active-indicator", false);
+                        d3.select(this).classed("active-indicator", true);
+                        updateMap(geojsonData, indicator);
+                    });
+                indicatorList.filter(d => d === "Population").classed("active-indicator", true);
+                updateMap(geojsonData, "Population");
+            }).catch(error => {
+                console.error("Erreur chargement GeoJSON :", error);
+                svg.append("text").attr("x", width / 2).attr("y", height / 2)
+                   .attr("text-anchor", "middle").style("fill", "red").text("Erreur de chargement de la carte");
+            });
+
+            // Section 3 : Graphiques
+            const years = {{ .years | tojson }};
+            const population = {{ .population | tojson }};
+            const schoolEnrollmentRate = {{ .school_enrollment_rate | tojson }};
+            const ageGroups = {{ .age_groups | tojson }};
+            const ageDistribution = {{ .age_distribution | tojson }};
+
+            new Chart(document.getElementById('chart-line-population'), {
+                type: 'line',
+                data: {
+                    labels: years,
+                    datasets: [{
+                        label: 'Population',
+                        data: population,
+                        borderColor: "hsla(91, 35%, 22%, 0.773)",
+                        backgroundColor: 'white',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { title: { display: false }, tooltip: { mode: 'index', intersect: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Année' } },
+                        y: { title: { display: true, text: 'Population (en millions)' } }
+                    }
+                }
+            });
+
+            new Chart(document.getElementById('chart-line-enrollment'), {
+                type: 'line',
+                data: {
+                    labels: years,
+                    datasets: [{
+                        label: 'Taux de scolarisation (%)',
+                        data: schoolEnrollmentRate,
+                        borderColor: '#F39323',
+                        backgroundColor: 'white',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { title: { display: false }, tooltip: { mode: 'index', intersect: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Année' } },
+                        y: { title: { display: true, text: 'Taux de scolarisation' } }
+                    }
+                }
+            });
+
+            new Chart(document.getElementById('chart-bar-age-distribution'), {
+                type: 'bar',
+                data: {
+                    labels: ageGroups,
+                    datasets: [{
+                        label: "Population",
+                        data: ageDistribution,
+                        borderColor: '#0C6B23',
+                        backgroundColor: 'rgba(12, 107, 35, 0.2)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { title: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Tranche d\'âge' } },
+                        y: { title: { display: true, text: 'Population (millier)' }, beginAtZero: true }
+                    }
+                }
+            });
+        });
+
+        // Fonction pour mettre en surbrillance une région
+        function highlightRegion(regionName) {
+            svg.selectAll(".region")
+                .attr("fill", d => colorScale(d.properties.Population))
+                .attr("stroke", "none");
+
+            svg.selectAll(".region")
+                .filter(d => d.properties.REGION === regionName)
+                .attr("fill", "#F39323")
+                .attr("stroke", "#000000")
+                .attr("stroke-width", 2);
+        }
+
+        // Fonction pour réinitialiser la surbrillance
+        function resetRegionHighlight(event) {
+            const suggestionsContainer = document.getElementById("suggestions");
+            if (window.isSuggestionsActive || (event && suggestionsContainer.contains(event.relatedTarget))) {
+                return;
+            }
+            svg.selectAll(".region")
+                .attr("fill", d => colorScale(d.properties.Population))
+                .attr("stroke", "none");
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ChartJS avec Go</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="p-8">
+  <h1 class="text-2xl font-bold mb-4">Graphique Dynamique (Chart.js + Go)</h1>
+  <canvas id="myChart" width="400" height="200"></canvas>
+
+  <script>
+    // Charger les données via AJAX
+    fetch("/api/chart-data")
+      .then(res => res.json())
+      .then(data => {
+        const ctx = document.getElementById("myChart").getContext("2d");
+        new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: data.labels,
+            datasets: [{
+              label: "Ventes",
+              data: data.values,
+              backgroundColor: "rgba(75, 192, 192, 0.5)",
+              borderColor: "rgba(75, 192, 192, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      });
+  </script>
+</body>
+</html>
