@@ -12,7 +12,7 @@ db_params = {
 }
 
 # Chemin du fichier Excel
-file_path = 'C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/document/importer.xlsx'
+file_path ="C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/document/import_domaine_sous.xlsx"
 
 # Lire le fichier Excel
 try:
@@ -24,22 +24,19 @@ except Exception as e:
     print(f"Erreur lors de la lecture du fichier Excel : {e}")
     exit(1)
 
-# Supprimer les espaces en trop dans les noms de colonnes
+
 df.columns = df.columns.str.strip()
-
-# Renommer la colonne 'Indicateurs' en 'indicateur'
-df.rename(columns={'Indicateurs': 'indicateur'}, inplace=True)
-
 # Vérifier les colonnes
-expected_columns = ['indicateur_id', 'idsousdo', 'indicateur', 'definitions', 'mode_calcul']
+expected_columns = ['iddom', 'idsousdo', 'sousdomaine']
 if not all(col in df.columns for col in expected_columns):
     print(f"Erreur : Colonnes attendues : {expected_columns}, trouvées : {list(df.columns)}")
     exit(1)
 
+
+df.columns = df.columns.str.strip()
+
 # Convertir les colonnes texte en chaînes pour garantir UTF-8
-df['indicateur'] = df['indicateur'].astype(str)
-df['definitions'] = df['definitions'].astype(str)
-df['mode_calcul'] = df['mode_calcul'].astype(str)
+df['sousdomaine'] = df['sousdomaine'].astype(str)
 
 # Connexion à la base
 try:
@@ -53,15 +50,13 @@ except Exception as e:
 try:
     for _, row in df.iterrows():
         query = sql.SQL("""
-            INSERT INTO indicateurs (indicateur_id, sousdomaine_id, indicateur, definitions, mode_calcul)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO sousdomaines (sousdomaine_id, domaines_id, sousdomaine)
+            VALUES (%s, %s, %s)
         """)
         cursor.execute(query, (
-            int(row['indicateur_id']),  # Assurer que indicateur_id est un entier
             int(row['idsousdo']),  # Assurer que sousdomaine_id est un entier
-            row['indicateur'],
-            row['definitions'],
-            row['mode_calcul']
+            int(row['iddom']),  # Assurer que domaines_id est un entier
+            row['sousdomaine']
         ))
     conn.commit()
     print("Données importées avec succès.")

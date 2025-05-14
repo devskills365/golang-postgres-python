@@ -12,7 +12,7 @@ db_params = {
 }
 
 # Chemin du fichier Excel
-file_path = 'C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/document/importer.xlsx'
+file_path = "C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/appweb/dashbord-anstat/data_v0.xlsx"
 
 # Lire le fichier Excel
 try:
@@ -27,19 +27,18 @@ except Exception as e:
 # Supprimer les espaces en trop dans les noms de colonnes
 df.columns = df.columns.str.strip()
 
-# Renommer la colonne 'Indicateurs' en 'indicateur'
-df.rename(columns={'Indicateurs': 'indicateur'}, inplace=True)
-
 # Vérifier les colonnes
-expected_columns = ['indicateur_id', 'idsousdo', 'indicateur', 'definitions', 'mode_calcul']
+expected_columns = ['Dimension', 'Modalites', 'Indicateurs', 'Année', 'Valeurs']
 if not all(col in df.columns for col in expected_columns):
     print(f"Erreur : Colonnes attendues : {expected_columns}, trouvées : {list(df.columns)}")
     exit(1)
 
 # Convertir les colonnes texte en chaînes pour garantir UTF-8
-df['indicateur'] = df['indicateur'].astype(str)
-df['definitions'] = df['definitions'].astype(str)
-df['mode_calcul'] = df['mode_calcul'].astype(str)
+df['Dimension'] = df['Dimension'].astype(str)
+df['Modalites'] = df['Modalites'].astype(str)
+df['Indicateurs'] = df['Indicateurs'].astype(str)
+df['Année'] = df['Année'].astype(int)
+df['Valeurs'] = df['Valeurs'].astype(float)
 
 # Connexion à la base
 try:
@@ -53,15 +52,15 @@ except Exception as e:
 try:
     for _, row in df.iterrows():
         query = sql.SQL("""
-            INSERT INTO indicateurs (indicateur_id, sousdomaine_id, indicateur, definitions, mode_calcul)
+            INSERT INTO datav0 (dimension, modalites, indicateurs, annee, valeurs)
             VALUES (%s, %s, %s, %s, %s)
         """)
         cursor.execute(query, (
-            int(row['indicateur_id']),  # Assurer que indicateur_id est un entier
-            int(row['idsousdo']),  # Assurer que sousdomaine_id est un entier
-            row['indicateur'],
-            row['definitions'],
-            row['mode_calcul']
+            row['Dimension'],
+            row['Modalites'],
+            row['Indicateurs'],
+            row['Année'],
+            row['Valeurs']
         ))
     conn.commit()
     print("Données importées avec succès.")

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base de données des statistiques régionales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { overflow-x: hidden; font-family: 'Open Sans', sans-serif; }
+        .logo-img { width: clamp(150px, 5vw, 250px); height: auto; }
+        .suggestions-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+            background: white;
+            border: 1px solid #49655A;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .suggestions-list div { padding: 8px; cursor: pointer; }
+        .suggestions-list div:hover { background: #d9e6db; color: #49655A; }
+        .draggable-item { cursor: move; }
+        #table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #49655A; color: white; }
+        tr:hover { background-color: #e0e0e0; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Menu harmonisé -->
+    <header class="bg-white shadow-lg p-4 fixed top-0 left-0 w-full z-50">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center justify-between w-full md:w-auto">
+                <a href="/" class="flex-shrink-0">
+                    <img src="/static/img/logo.jpeg" alt="Logo" class="logo-img">
+                </a>
+                <button id="hamburger" class="md:hidden text-[#49655A] text-xl focus:outline-none">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav id="nav-links" class="flex-col md:flex-row md:flex items-center space-y-3 md:space-y-0 md:space-x-4 w-full md:w-auto mt-4 md:mt-0 hidden">
+                <a href="/"
+                   class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Accéder aux indicateurs
+                </a>
+                <a href="/aide"
+                   class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Aide
+                </a>
+            </nav>
+            <div class="flex items-center space-x-4 mt-4 md:mt-0 w-full md:w-auto">
+                <form method="POST" action="/search" class="flex items-center w-full max-w-lg" onsubmit="return submitSearch();">
+                    <div class="relative w-full">
+                        <input type="text" id="search-input" name="query" placeholder="Entrez votre recherche..."
+                               class="w-full px-4 py-2 bg-gray-50 border border-[#49655A] rounded-full focus:outline-none focus:ring-2 focus:ring-[#49655A] shadow-sm text-sm"
+                               required autocomplete="off">
+                        <div id="suggestions" class="suggestions-list"></div>
+                    </div>
+                    <button type="submit" id="search-button"
+                            class="bg-[#49655A] text-white px-4 py-2 rounded-full hover:bg-[#003820] transition-all font-semibold text-sm ml-2">
+                        Rechercher
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- Titre indicateur -->
+    <h3 id="pdf-title" class="text-center text-base font-semibold bg-[#49655A] text-white px-6 py-2 rounded-lg mt-20 mx-auto w-fit">
+        Indicateur : {{ .indicateur2 }}
+    </h3>
+
+    <!-- Contenu principal -->
+    <div class="container mx-auto px-4 py-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-[#F39323]">
+            <div class="flex justify-end mb-4">
+                <div class="flex gap-4">
+                    <button id="download-xlsx" title="Télécharger en XLSX" class="text-[#49655A] border-2 border-[#49655A] rounded-lg p-2 hover:bg-[#49655A] hover:text-white transition-all">
+                        <i class="fas fa-file-excel"></i>
+                    </button>
+                    <button id="download-csv" title="Télécharger en CSV" class="text-[#49655A] border-2 border-[#49655A] rounded-lg p-2 hover:bg-[#49655A] hover:text-white transition-all">
+                        <i class="fas fa-file-csv"></i>
+                    </button>
+                    <button id="download-pdf" title="Télécharger en PDF" class="text-[#F39323] border-2 border-[#F39323] rounded-lg p-2 hover:bg-[#F39323] hover:text-white transition-all">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+                    <button id="metadonnees" title="Afficher les métadonnées" class="text-[#49655A] border-2 border-[#49655A] rounded-lg p-2 hover:bg-[#49655A] hover:text-white transition-all">
+                        <i class="fas fa-info-circle"></i> Métadonnées
+                    </button>
+                </div>
+            </div>
+
+            <!-- Métadonnées -->
+            <div id="metadata-container" class="hidden mb-4 p-4 bg-gray-50 rounded-lg border border-[#49655A]">
+                <p class="text-sm"><strong>Définition :</strong> {{ if .definitions }}{{ .definitions }}{{ else }}Non disponible{{ end }}</p>
+                <p class="text-sm"><strong>Mode de calcul :</strong> {{ if .mode_calcul }}{{ .mode_calcul }}{{ else }}Non défini{{ end }}</p>
+            </div>
+
+            <!-- Conteneur principal -->
+            <div class="flex flex-col lg:flex-row gap-6">
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-base font-semibold text-[#49655A] mb-2">Niveau de désagrégation</h3>
+                    <div id="initial-list" class="p-4 bg-gray-50 border-2 border-dashed border-[#49655A] rounded-xl min-h-[50px] flex flex-col gap-2">
+                        {{ range .colonne_valable }}
+                            <div class="draggable-item bg-white p-2 border border-[#49655A] rounded-lg text-sm text-[#49655A] hover:bg-[#d9e6db] inline-block w-fit" data-column="{{ . }}" id="drag-{{ . }}-initial" draggable="true">
+                                {{ . }}
+                            </div>
+                        {{ end }}
+                    </div>
+                </div>
+
+                <div class="flex-1 min-w-0">
+                    <div id="droppable-container" class="flex flex-col lg:flex-row gap-4">
+                        <div id="droppable-area-rows" class="flex-1 p-4 bg-gray-50 border-2 border-dashed border-[#49655A] rounded-xl min-h-[100px] flex flex-col gap-2 items-center justify-center">
+                            <span id="placeholder-rows" class="text-sm text-gray-500 italic">Glissez ici pour modalités en ligne</span>
+                        </div>
+                        <div id="droppable-area-cols" class="flex-1 p-4 bg-gray-50 border-2 border-dashed border-[#49655A] rounded-xl min-h-[100px] flex flex-col gap-2 items-center justify-center">
+                            <span id="placeholder-cols" class="text-sm text-gray-500 italic">Glissez ici pour modalités en colonne</span>
+                        </div>
+                    </div>
+                    <div id="filter-container" class="mt-4 p-4 bg-gray-50 rounded-xl border border-[#49655A]"></div>
+                </div>
+            </div>
+
+            <div id="table-container" class="mt-6 p-4 bg-white rounded-xl border border-[#49655A]"></div>
+        </div>
+    </div>
+
+    <!-- Modal PDF -->
+    <div id="pdf-preview-modal" class="hidden fixed top-[10%] left-[10%] w-4/5 h-4/5 bg-white shadow-lg z-50 rounded-xl">
+        <div class="text-right p-2">
+            <button id="close-preview" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">Fermer</button>
+        </div>
+        <iframe id="pdf-preview" class="w-full h-[90%] border-none"></iframe>
+    </div>
+<!-- Dans la section <div class="container mx-auto px-4 py-8">, juste après <div id="filter-container"> -->
+<div id="query-container" class="mt-4 p-4 bg-gray-50 rounded-xl border border-[#49655A]">
+    <h3 class="text-base font-semibold text-[#49655A] mb-2">Requête personnalisée</h3>
+    <form id="query-form" class="flex flex-col gap-4">
+        <div class="flex flex-col">
+            <label for="query-annee" class="text-sm text-[#49655A]">Année</label>
+            <input type="text" id="query-annee" name="annee" placeholder="Ex: 2023" class="px-4 py-2 bg-white border border-[#49655A] rounded-lg text-sm">
+        </div>
+        <div class="flex flex-col">
+            <label for="query-dimension" class="text-sm text-[#49655A]">Dimension (ex: Région)</label>
+            <input type="text" id="query-dimension" name="dimension" placeholder="Ex: Région" class="px-4 py-2 bg-white border border-[#49655A] rounded-lg text-sm">
+        </div>
+        <div class="flex flex-col">
+            <label for="query-value" class="text-sm text-[#49655A]">Valeur de la dimension (ex: Nord)</label>
+            <input type="text" id="query-value" name="value" placeholder="Ex: Nord" class="px-4 py-2 bg-white border border-[#49655A] rounded-lg text-sm">
+        </div>
+        <button type="submit" class="bg-[#49655A] text-white px-4 py-2 rounded-lg hover:bg-[#003820] transition-all font-semibold text-sm">
+            Exécuter la requête
+        </button>
+    </form>
+</div>
+<!-- Le conteneur des résultats sera affiché dans table-container -->
+    <!-- Footer -->
+    <footer class="bg-[#49655A] text-white py-6 mt-8">
+        <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+            <div class="mb-4 md:mb-0">
+                <p class="text-sm font-semibold">© 2025 Base de données statistiques régionales</p>
+                <p class="text-xs">Développé par <a href="https://www.anstat.ci/" target="_blank" class="text-[#F39323] hover:underline">ANSTAT</a></p>
+            </div>
+            <div class="flex space-x-6">
+                <a href="/list_regions" class="text-sm hover:text-[#F39323] transition-colors">Liste des régions</a>
+                <a href="/search_indicators" class="text-sm hover:text-[#F39323] transition-colors">Indicateurs</a>
+                <a href="/contact" class="text-sm hover:text-[#F39323] transition-colors">Contact</a>
+            </div>
+            <div class="mt-4 md:mt-0 flex space-x-4">
+                <a href="#" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-twitter"></i></a>
+                <a href="https://www.linkedin.com/company/anstat/" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-linkedin"></i></a>
+                <a href="https://www.facebook.com/anstatci" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-facebook"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        let isSuggestionsActive = false;
+
+        function submitSearch() {
+            const query = document.getElementById('search-input').value;
+            console.log('Recherche soumise : ' + query);
+            return true;
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log('DOM chargé');
+
+            // Stocker df_filtered_id pour les requêtes AJAX
+            const dfFilteredId = '{{ .df_filtered_id }}';
+            console.log('df_filtered_id:', dfFilteredId);
+
+            // Menu hamburger
+            const hamburger = document.getElementById('hamburger');
+            const navLinks = document.getElementById('nav-links');
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('hidden');
+                navLinks.classList.toggle('flex');
+            });
+            document.addEventListener('click', (event) => {
+                if (!hamburger.contains(event.target) && !navLinks.contains(event.target)) {
+                    navLinks.classList.add('hidden');
+                    navLinks.classList.remove('flex');
+                }
+            });
+
+            // Autocomplétion
+            const searchInput = document.getElementById('search-input');
+            const suggestionsContainer = document.getElementById('suggestions');
+            searchInput.addEventListener('input', function () {
+                const query = this.value.trim();
+                console.log('Input recherche :', query);
+                if (query.length < 2) {
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                    return;
+                }
+                fetch(`/autocomplete?query=${encodeURIComponent(query)}`)
+                    .then(response => {
+                        if (!response.ok) throw new Error('Erreur réseau');
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Suggestions reçues :', data);
+                        suggestionsContainer.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(item => {
+                                const div = document.createElement('div');
+                                div.textContent = item;
+                                div.className = 'text-sm';
+                                div.onclick = () => {
+                                    searchInput.value = item;
+                                    suggestionsContainer.innerHTML = '';
+                                    suggestionsContainer.style.display = 'none';
+                                    isSuggestionsActive = false;
+                                    window.location.href = `/requete_resultat/${encodeURIComponent(item)}`;
+                                };
+                                suggestionsContainer.appendChild(div);
+                            });
+                            suggestionsContainer.style.display = 'block';
+                            isSuggestionsActive = true;
+                        } else {
+                            suggestionsContainer.style.display = 'none';
+                            isSuggestionsActive = false;
+                        }
+                    })
+                    .catch(error => console.error('Erreur autocomplétion :', error));
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!searchInput.contains(event.target) && !suggestionsContainer.contains(event.target)) {
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                }
+            });
+
+            // Métadonnées
+            document.getElementById('metadonnees').addEventListener('click', function () {
+                const metadataContainer = document.getElementById('metadata-container');
+                metadataContainer.classList.toggle('hidden');
+            });
+
+        });
+    </script>
+    <script src="/static/js/pivot_table.js"></script>
+</body>
+</html>

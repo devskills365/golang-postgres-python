@@ -12,7 +12,7 @@ db_params = {
 }
 
 # Chemin du fichier Excel
-file_path = 'C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/document/importer.xlsx'
+file_path = "C:/Users/DELL/OneDrive - GOUVCI/DCSARD/Action_Regionale/Applications/document/import_domaine_sous.xlsx"
 
 # Lire le fichier Excel
 try:
@@ -24,22 +24,16 @@ except Exception as e:
     print(f"Erreur lors de la lecture du fichier Excel : {e}")
     exit(1)
 
-# Supprimer les espaces en trop dans les noms de colonnes
+
 df.columns = df.columns.str.strip()
-
-# Renommer la colonne 'Indicateurs' en 'indicateur'
-df.rename(columns={'Indicateurs': 'indicateur'}, inplace=True)
-
 # Vérifier les colonnes
-expected_columns = ['indicateur_id', 'idsousdo', 'indicateur', 'definitions', 'mode_calcul']
+expected_columns = ['domaine_id','domaine']
 if not all(col in df.columns for col in expected_columns):
     print(f"Erreur : Colonnes attendues : {expected_columns}, trouvées : {list(df.columns)}")
     exit(1)
 
 # Convertir les colonnes texte en chaînes pour garantir UTF-8
-df['indicateur'] = df['indicateur'].astype(str)
-df['definitions'] = df['definitions'].astype(str)
-df['mode_calcul'] = df['mode_calcul'].astype(str)
+df['domaine'] = df['domaine'].astype(str)
 
 # Connexion à la base
 try:
@@ -53,15 +47,12 @@ except Exception as e:
 try:
     for _, row in df.iterrows():
         query = sql.SQL("""
-            INSERT INTO indicateurs (indicateur_id, sousdomaine_id, indicateur, definitions, mode_calcul)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO domaines (domaine_id, domaine)
+            VALUES (%s, %s)
         """)
         cursor.execute(query, (
-            int(row['indicateur_id']),  # Assurer que indicateur_id est un entier
-            int(row['idsousdo']),  # Assurer que sousdomaine_id est un entier
-            row['indicateur'],
-            row['definitions'],
-            row['mode_calcul']
+            int(row['domaine_id']),  # Assurer que domaine_id est un entier
+            row['domaine']
         ))
     conn.commit()
     print("Données importées avec succès.")

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Requête sur indicateur</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { overflow-x: hidden; font-family: 'Montserrat', sans-serif; }
+        .container { max-width: 100%; box-sizing: border-box; }
+        .suggestions-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            border-radius: 0 0 0.5rem 0.5rem;
+            background: white;
+            border: 1px solid #49655A;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .suggestions-list div { padding: 8px; cursor: pointer; }
+        .suggestions-list div:hover { background: #d9e6db; color: #49655A; }
+        .logo-img { width: clamp(150px, 5vw, 250px); height: auto; }
+        .modal-content { animation: slideIn 0.5s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .list-group { max-height: 400px; overflow-y: auto; }
+        .list-group::-webkit-scrollbar { width: 8px; }
+        .list-group::-webkit-scrollbar-thumb { background-color: #49655A; border-radius: 4px; }
+        .list-group::-webkit-scrollbar-track { background: #f1f1f1; }
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background-color: #e0e0e0;
+            z-index: 100;
+            display: none;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #F39323;
+            width: 0;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Progress bar -->
+    <div id="progress-container" class="progress-container">
+        <div id="progress-bar" class="progress-bar"></div>
+    </div>
+
+    <!-- Menu -->
+    <header class="bg-white shadow-lg p-4 fixed top-0 left-0 w-full z-50">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center justify-between w-full md:w-auto">
+                <a href="/list_regions" class="flex-shrink-0">
+                    <img src="/static/img/logo.jpeg" alt="Logo" class="logo-img">
+                </a>
+                <button id="hamburger" class="md:hidden text-[#49655A] text-xl focus:outline-none">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav id="nav-links" class="flex-col md:flex-row md:flex items-center space-y-3 md:space-y-0 md:space-x-4 w-full md:w-auto mt-4 md:mt-0 hidden">
+                <a href="/search_indicators"
+                   class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Accéder aux indicateurs
+                </a>
+                <a href="#"
+                   class="text-[#49655A] border-2 border-[#49655A] rounded-full px-4 py-2 uppercase font-semibold text-sm hover:bg-[#49655A] hover:text-white transition-all w-full md:w-auto text-center">
+                    Demande API
+                </a>
+            </nav>
+            <div class="flex items-center space-x-4 mt-4 md:mt-0 w-full md:w-auto">
+                <form method="POST" action="/search" class="flex items-center w-full max-w-lg" onsubmit="return submitSearch();">
+                    <div class="relative w-full">
+                        <input type="text" id="search-input" name="query" placeholder="Entrez votre recherche..."
+                               class="w-full px-4 py-2 bg-gray-50 border border-[#49655A] rounded-full focus:outline-none focus:ring-2 focus:ring-[#49655A] shadow-sm text-sm"
+                               required autocomplete="off">
+                        <div id="suggestions" class="suggestions-list"></div>
+                    </div>
+                    <button type="submit" id="search-button"
+                            class="bg-[#49655A] text-white px-4 py-2 rounded-full hover:bg-[#003820] transition-all font-semibold text-sm ml-2">
+                        Rechercher
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- Modal -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden" id="descriptionModal">
+        <div class="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full mx-4">
+            <div class="flex justify-between items-center border-b-2 border-[#F39323] pb-2">
+                <h5 class="text-lg font-semibold text-[#49655A]">
+                    <i class="fas fa-info-circle text-[#F39323] mr-2"></i> Description de la base de données
+                </h5>
+                <button class="text-[#49655A] hover:text-[#F39323]" onclick="document.getElementById('descriptionModal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="py-4 text-gray-600 text-sm">
+                <p>Cette base de données a été développée afin de mettre à la disposition des utilisateurs et des usagers un moyen efficace pour accéder aux données statistiques régionales désagrégées.</p>
+                <p class="mt-2">Elle est composée autant des données produites par les structures du système statistique national que de celles issues des enquêtes d'envergure réalisées par l'Agence Nationale de la Statistique (ANStat).</p>
+            </div>
+            <div class="text-right">
+                <button class="bg-[#F39323] text-white px-4 py-2 rounded-lg hover:bg-[#e76f51] transition-all text-sm" onclick="document.getElementById('descriptionModal').classList.add('hidden')">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="container mx-auto px-4 py-8 mt-20 flex flex-col lg:flex-row gap-6">
+        <div class="bg-white p-6 rounded-xl shadow-lg w-full lg:w-1/3">
+            <h5 class="bg-[#49655A] text-white text-base font-semibold text-center p-3 rounded-lg mb-4">Domaines</h5>
+            <ul id="domaines" class="space-y-2 list-group"></ul>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg w-full lg:w-1/3">
+            <h5 class="bg-[#49655A] text-white text-base font-semibold text-center p-3 rounded-lg mb-4">Sous-domaines</h5>
+            <ul id="thematiques" class="space-y-2 list-group"></ul>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg w-full lg:w-1/3">
+            <h5 class="bg-[#49655A] text-white text-base font-semibold text-center p-3 rounded-lg mb-4">Indicateurs</h5>
+            <div class="flex mb-4">
+                <input type="text" id="indicatorSearch" class="w-full px-4 py-2 border border-[#49655A] rounded-l-lg focus:outline-none focus:ring-2 focus:ring-[#49655A] text-sm" placeholder="Saisir mot clé...">
+                <button id="clearSearch" class="bg-[#49655A] text-white px-4 py-2 rounded-r-lg hover:bg-[#003820] transition-all text-sm">Effacer</button>
+            </div>
+            <ul id="indicateurs" class="space-y-2 list-group"></ul>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-[#49655A] text-white py-6 mt-8">
+        <div class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+            <div class="mb-4 md:mb-0">
+                <p class="text-sm font-semibold">© 2025 Base de données statistiques régionales</p>
+                <p class="text-xs">Développé par <a href="https://www.anstat.ci/" target="_blank" class="text-[#F39323] hover:underline">ANSTAT</a></p>
+            </div>
+            <div class="flex space-x-6">
+                <a href="/list_regions" class="text-sm hover:text-[#F39323] transition-colors">Liste des régions</a>
+                <a href="/search_indicators" class="text-sm hover:text-[#F39323] transition-colors">Indicateurs</a>
+                <a href="#" class="text-sm hover:text-[#F39323] transition-colors">Contact</a>
+            </div>
+            <div class="mt-4 md:mt-0 flex space-x-4">
+                <a href="#" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-twitter"></i></a>
+                <a href="https://www.linkedin.com/company/anstat/" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-linkedin"></i></a>
+                <a href="https://www.facebook.com/anstatci" class="text-white hover:text-[#F39323] transition-colors"><i class="fab fa-facebook"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        let isSuggestionsActive = false;
+
+        function submitSearch() {
+            const query = document.getElementById('search-input').value;
+            console.log('Recherche soumise : ' + query);
+            return true;
+        }
+
+        function showProgressBarAndRedirect(indicateur) {
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            progressContainer.style.display = 'block';
+            let progress = 0;
+            const duration = 2000;
+            const interval = 100;
+            const steps = duration / interval;
+
+            const progressInterval = setInterval(() => {
+                progress += 100 / steps;
+                progressBar.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    progressContainer.style.display = 'none';
+                    progressBar.style.width = '0%';
+                    window.location.href = `/search_indicators2/${encodeURIComponent(indicateur)}`;
+                }
+            }, interval);
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log('DOM chargé');
+
+            // Hamburger menu
+            const hamburger = document.getElementById('hamburger');
+            const navLinks = document.getElementById('nav-links');
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('hidden');
+                navLinks.classList.toggle('flex');
+            });
+            document.addEventListener('click', (event) => {
+                if (!hamburger.contains(event.target) && !navLinks.contains(event.target)) {
+                    navLinks.classList.add('hidden');
+                    navLinks.classList.remove('flex');
+                }
+            });
+
+            // Show modal
+            document.getElementById('descriptionModal').classList.remove('hidden');
+
+            // Autocomplete
+            const searchInput = document.getElementById('search-input');
+            const suggestionsContainer = document.getElementById('suggestions');
+            searchInput.addEventListener('input', function () {
+                const query = this.value.trim();
+                console.log('Input recherche :', query);
+                if (query.length < 2) {
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                    return;
+                }
+                fetch(`/autocomplete?query=${encodeURIComponent(query)}`)
+                    .then(response => {
+                        if (!response.ok) throw new Error(`Erreur réseau: ${response.status}`);
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Suggestions reçues :', data);
+                        suggestionsContainer.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(item => {
+                                const div = document.createElement('div');
+                                div.textContent = item;
+                                div.className = 'text-sm';
+                                div.onclick = () => {
+                                    searchInput.value = item;
+                                    suggestionsContainer.innerHTML = '';
+                                    suggestionsContainer.style.display = 'none';
+                                    isSuggestionsActive = false;
+                                    window.location.href = `/search_indicators2/${encodeURIComponent(item)}`;
+                                };
+                                suggestionsContainer.appendChild(div);
+                            });
+                            suggestionsContainer.style.display = 'block';
+                            isSuggestionsActive = true;
+                        } else {
+                            suggestionsContainer.style.display = 'none';
+                            isSuggestionsActive = false;
+                        }
+                    })
+                    .catch(error => console.error('Erreur autocomplétion :', error));
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!searchInput.contains(event.target) && !suggestionsContainer.contains(event.target)) {
+                    suggestionsContainer.innerHTML = '';
+                    suggestionsContainer.style.display = 'none';
+                    isSuggestionsActive = false;
+                }
+            });
+
+            // Load data
+            fetchData();
+
+            // Filter indicators
+            const indicatorSearch = document.getElementById('indicatorSearch');
+            const clearSearchBtn = document.getElementById('clearSearch');
+            const indicateursList = document.getElementById('indicateurs');
+            indicatorSearch.addEventListener('input', function () {
+                const query = this.value.toLowerCase().trim();
+                console.log('Filtre indicateurs :', query);
+                filterIndicators(query);
+            });
+            clearSearchBtn.addEventListener('click', () => {
+                indicatorSearch.value = '';
+                filterIndicators('');
+            });
+
+            function filterIndicators(query) {
+                const items = indicateursList.getElementsByTagName('li');
+                for (let item of items) {
+                    const text = item.textContent.toLowerCase();
+                    item.classList.toggle('hidden', !text.includes(query));
+                }
+            }
+        });
+
+        let domaines = {};
+        function fetchData() {
+            console.log('Chargement des données...');
+            fetch('/structure_indicateur')
+                .then(response => {
+                    if (!response.ok) {
+                        console.error('Erreur fetch /structure_indicateur :', response.statusText);
+                        throw new Error(`Erreur réseau: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Données reçues :', data);
+                    // Validate data structure
+                    if (!data) {
+                        console.error('Structure de données invalide : données manquantes');
+                        return;
+                    }
+                    // Populate domaines with indicators
+                    domaines = {};
+                    Object.keys(data).forEach(key => {
+                        const [domaine, thematique] = key.split(', ').map(s => s.trim());
+                        if (!domaines[domaine]) {
+                            domaines[domaine] = { thematiques: {} };
+                        }
+                        domaines[domaine].thematiques[thematique] = data[key].map(ind => ind.trim());
+                    });
+                    console.log('Domaines construits :', domaines);
+                    displayDomaines();
+                    const firstDomaine = Object.keys(domaines)[0];
+                    if (firstDomaine) {
+                        console.log('Sélection du premier domaine :', firstDomaine);
+                        selectDomaine(firstDomaine);
+                    } else {
+                        console.warn('Aucun domaine trouvé');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur fetch data :', error);
+                    const domainesList = document.getElementById('domaines');
+                    domainesList.innerHTML = '<li class="text-red-600 text-sm">Erreur lors du chargement des données.</li>';
+                });
+        }
+
+        function displayDomaines() {
+            console.log('Affichage des domaines...');
+            const domainesList = document.getElementById('domaines');
+            domainesList.innerHTML = '';
+            Object.keys(domaines).sort().forEach(domaine => {
+                const li = document.createElement('li');
+                li.className = 'text-[#49655A] font-medium p-2 rounded hover:bg-[#d9e6db] cursor-pointer flex items-center gap-2 text-sm';
+                li.innerHTML = `<i class="fas fa-folder text-[#F39323]"></i> ${domaine.charAt(0).toUpperCase() + domaine.slice(1).replace(/_/g, ' ')}`;
+                li.onclick = () => selectDomaine(domaine);
+                domainesList.appendChild(li);
+            });
+            console.log('Domaines affichés :', Object.keys(domaines));
+        }
+
+        function selectDomaine(domaine) {
+            console.log('Sélection du domaine :', domaine);
+            const domainesList = document.getElementById('domaines');
+            const allDomaines = domainesList.querySelectorAll('li');
+            allDomaines.forEach(li => li.classList.remove('bg-[#e0e0e0]', 'font-bold'));
+            const selected = Array.from(allDomaines).find(li => li.textContent.trim().toLowerCase().includes(domaine.toLowerCase()));
+            if (selected) {
+                selected.classList.add('bg-[#e0e0e0]', 'font-bold');
+            } else {
+                console.warn('Domaine non trouvé dans la liste :', domaine);
+            }
+
+            const thematiquesList = document.getElementById('thematiques');
+            const indicateursList = document.getElementById('indicateurs');
+            thematiquesList.innerHTML = '';
+            indicateursList.innerHTML = '';
+
+            if (!domaines[domaine]) {
+                console.warn('Aucune donnée pour le domaine :', domaine);
+                return;
+            }
+
+            Object.keys(domaines[domaine].thematiques).sort().forEach(thematique => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center p-2 text-[#49655A] text-sm';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'mr-2';
+                checkbox.id = `thematique-${thematique.replace(/\s+/g, '-')}`;
+                checkbox.onchange = () => toggleIndicateurs(domaine, thematique, checkbox.checked);
+                const label = document.createElement('label');
+                label.setAttribute('for', `thematique-${thematique.replace(/\s+/g, '-')}`);
+                label.textContent = thematique.charAt(0).toUpperCase() + thematique.slice(1);
+                li.appendChild(checkbox);
+                li.appendChild(label);
+                thematiquesList.appendChild(li);
+            });
+            console.log('Thématiques affichées pour', domaine, ':', Object.keys(domaines[domaine].thematiques));
+        }
+
+        function toggleIndicateurs(domaine, thematique, isChecked) {
+            console.log(`Toggle indicateurs : ${domaine}, ${thematique}, checked=${isChecked}`);
+            const indicateursList = document.getElementById('indicateurs');
+            if (isChecked) {
+                domaines[domaine].thematiques[thematique].forEach(indicateur => {
+                    const li = document.createElement('li');
+                    li.className = 'p-2 rounded hover:bg-[#d9e6db] text-sm';
+                    li.id = `indicateur-${indicateur.replace(/\s+/g, '-')}`;
+                    const a = document.createElement('a');
+                    a.href = '#';
+                    a.textContent = indicateur;
+                    a.className = 'text-[#000000] hover:text-[#49655A]';
+                    a.onclick = (e) => {
+                        e.preventDefault();
+                        console.log('Clic sur indicateur :', indicateur);
+                        showProgressBarAndRedirect(indicateur);
+                    };
+                    li.appendChild(a);
+                    indicateursList.appendChild(li);
+
+                    const query = document.getElementById('indicatorSearch').value.toLowerCase().trim();
+                    if (query && !indicateur.toLowerCase().includes(query)) {
+                        li.classList.add('hidden');
+                    }
+                });
+            } else {
+                domaines[domaine].thematiques[thematique].forEach(indicateur => {
+                    const li = document.getElementById(`indicateur-${indicateur.replace(/\s+/g, '-')}`);
+                    if (li) {
+                        indicateursList.removeChild(li);
+                    }
+                });
+            }
+            console.log('Indicateurs mis à jour pour', thematique);
+        }
+    </script>
+</body>
+</html>
